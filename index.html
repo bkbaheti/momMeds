@@ -97,12 +97,14 @@
     }
     .timeline-row {
       display: flex; align-items: center; padding: 12px 16px;
-      border-bottom: 1px solid #f1f5f9; gap: 12px; cursor: pointer;
+      border-bottom: 1px solid #f1f5f9; gap: 10px; cursor: pointer;
     }
     .timeline-row:last-child { border-bottom: none; }
     .timeline-row:active { background: #f8fafc; }
-    .tl-time { font-size: 14px; font-weight: 500; width: 60px; color: #475569; }
-    .tl-drug { flex: 1; font-size: 14px; font-weight: 500; }
+    .tl-time { font-size: 13px; font-weight: 500; width: 56px; color: #475569; }
+    .tl-info { flex: 1; min-width: 0; }
+    .tl-drug { font-size: 14px; font-weight: 500; }
+    .tl-detail { font-size: 11px; color: #94a3b8; margin-top: 1px; }
     .tl-eye { font-size: 12px; color: #94a3b8; width: 32px; }
     .tl-status { font-size: 18px; width: 28px; text-align: center; }
     .tl-status.taken { color: #059669; }
@@ -321,6 +323,7 @@
       <div class="timeline-header">Today's Schedule</div>
       <div id="timelineRows"></div>
     </div>
+    <button class="dolo-btn" style="border-style:solid;border-color:#1e40af;color:#1e40af;margin-top:12px" onclick="App.showLogModal()">⏰ Log a past dose</button>
     <button class="dolo-btn" onclick="App.logDolo()">💊 Log Dolo 650 (as needed)</button>
   </div>
 
@@ -519,7 +522,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.1.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.2.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -901,13 +904,32 @@
           statusIcon = '☐'; statusClass = 'upcoming';
         }
 
-        const onclick = log && log.status !== 'missed'
-          ? `onclick="App.showEditModal('${log.id}', '${slot.drug}', '${log.actualAt}')"`
-          : (!log && delta < missMin ? `onclick="App.logNow('${slot.drug}', '${slot.scheduledAt}')"` : '');
+        let onclick, detail = '';
+        if (log && log.status !== 'missed') {
+          // Logged dose — tap to edit
+          onclick = `onclick="App.showEditModal('${log.id}', '${slot.drug}', '${log.actualAt}')"`;
+          const actualTime = formatAMPM(new Date(log.actualAt));
+          const who = log.caretaker ? ' · ' + log.caretaker : '';
+          detail = 'Done ' + actualTime + who;
+        } else if (!log && delta >= missMin) {
+          // Missed, no log — tap to log retroactively
+          onclick = `onclick="App.showLogModal('${slot.drug}', '${slot.scheduledAt}')"`;
+          detail = 'Missed — tap to log';
+        } else if (!log) {
+          // Upcoming — tap to log now
+          onclick = `onclick="App.logNow('${slot.drug}', '${slot.scheduledAt}')"`;
+        } else {
+          // Missed with log
+          onclick = `onclick="App.showEditModal('${log.id}', '${slot.drug}', '${log.actualAt}')"`;
+          detail = 'Missed';
+        }
 
         html += `<div class="timeline-row" ${onclick}>
           <span class="tl-time">${formatAMPM(sched)}</span>
-          <span class="tl-drug">${DRUGS[slot.drug].name}</span>
+          <div class="tl-info">
+            <div class="tl-drug">${DRUGS[slot.drug].name}</div>
+            ${detail ? '<div class="tl-detail">' + detail + '</div>' : ''}
+          </div>
           <span class="tl-eye">${slot.eye === 'L' ? '👁 L' : '💊'}</span>
           <span class="tl-status ${statusClass}">${statusIcon}</span>
         </div>`;
@@ -922,9 +944,13 @@
         return d >= today && d < tomorrow;
       });
       for (const dl of doloLogs) {
+        const doloWho = dl.caretaker ? ' · ' + dl.caretaker : '';
         html += `<div class="timeline-row" onclick="App.showEditModal('${dl.id}', 'dolo', '${dl.actualAt}')">
           <span class="tl-time">${formatAMPM(new Date(dl.actualAt))}</span>
-          <span class="tl-drug">Dolo 650 (PRN)</span>
+          <div class="tl-info">
+            <div class="tl-drug">Dolo 650 (PRN)</div>
+            <div class="tl-detail">Taken${doloWho}</div>
+          </div>
           <span class="tl-eye">💊</span>
           <span class="tl-status taken">✓</span>
         </div>`;
@@ -1093,12 +1119,22 @@
       logNow('dolo', null);
     }
 
-    function showLogModal(drug) {
+    function showLogModal(drug, scheduledAt) {
       document.getElementById('logDrug').value = drug || 'ocupol';
       updateLogDrugEye();
-      const now = new Date();
-      document.getElementById('logDate').value = now.toISOString().slice(0, 10);
-      document.getElementById('logTime').value = now.toTimeString().slice(0, 5);
+      let prefillDate, prefillTime;
+      if (scheduledAt) {
+        // Pre-fill with the scheduled time of the missed/past slot
+        const d = new Date(scheduledAt);
+        prefillDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        prefillTime = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      } else {
+        const now = new Date();
+        prefillDate = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+        prefillTime = now.toTimeString().slice(0, 5);
+      }
+      document.getElementById('logDate').value = prefillDate;
+      document.getElementById('logTime').value = prefillTime;
       document.getElementById('logCaretaker').value = localStorage.getItem('eyemeds-device-label') || '';
       openModal('logModal');
     }
@@ -1203,32 +1239,53 @@
       if (toggle.classList.contains('on')) {
         // Unsubscribe
         if (window.OneSignal) {
-          const subId = window.OneSignal.User.PushSubscription.id;
-          if (subId) {
-            api('unsubscribe', { subscriptionId: subId }).catch(() => {});
-          }
+          try {
+            const subId = window.OneSignal.User.PushSubscription.id;
+            if (subId) {
+              api('unsubscribe', { subscriptionId: subId }).catch(() => {});
+            }
+            window.OneSignal.User.PushSubscription.optOut();
+          } catch(_) {}
         }
         toggle.classList.remove('on');
         toast('Notifications disabled');
       } else {
         // Subscribe
         if (!window.OneSignal) {
-          toast('OneSignal not loaded. Install as app first.');
+          toast('OneSignal not loaded. Try installing as app first.');
           return;
         }
-        window.OneSignal.Notifications.requestPermission().then(granted => {
-          if (granted) {
-            const subId = window.OneSignal.User.PushSubscription.id;
-            const label = localStorage.getItem('eyemeds-device-label') || guessDeviceLabel();
-            if (subId) {
-              api('subscribe', { subscriptionId: subId, deviceLabel: label })
-                .then(() => { toggle.classList.add('on'); toast('Notifications enabled!'); fetchState(); })
-                .catch(() => { toast('Error subscribing'); });
+        window.OneSignal.Notifications.requestPermission()
+          .then(() => {
+            // v16 SDK: requestPermission doesn't return bool, check state after
+            const permission = window.OneSignal.Notifications.permission;
+            if (!permission) {
+              toast('Permission denied — check browser settings');
+              return;
             }
-          } else {
-            toast('Permission denied');
-          }
-        });
+            // Opt in and wait for subscription ID
+            return window.OneSignal.User.PushSubscription.optIn();
+          })
+          .then(() => {
+            // Subscription ID may take a moment to populate
+            const tryGetId = (retries) => {
+              const subId = window.OneSignal.User.PushSubscription.id;
+              if (subId) {
+                const label = localStorage.getItem('eyemeds-device-label') || guessDeviceLabel();
+                api('subscribe', { subscriptionId: subId, deviceLabel: label })
+                  .then(() => { toggle.classList.add('on'); toast('Notifications enabled!'); fetchState(); })
+                  .catch(() => { toast('Error saving subscription'); });
+              } else if (retries > 0) {
+                setTimeout(() => tryGetId(retries - 1), 500);
+              } else {
+                toast('Could not get subscription ID — try again');
+              }
+            };
+            tryGetId(6);
+          })
+          .catch(e => {
+            toast('Error: ' + (e.message || 'permission denied'));
+          });
       }
     }
 
