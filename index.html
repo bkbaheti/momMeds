@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.5.2'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.5.3'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1338,11 +1338,17 @@
         return;
       }
 
-      // iOS non-PWA check
+      // iOS checks
       const isIOS = /iPhone|iPad/.test(navigator.userAgent);
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const isSafari = /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(navigator.userAgent);
+
+      if (isIOS && !isSafari && !isStandalone) {
+        alert('iOS notifications only work via Safari.\n\n1. Open this link in Safari (not Chrome)\n2. Add to Home Screen\n3. Open the PWA and enable notifications\n\nApple does not allow push notifications from Chrome or other browsers on iPhone.');
+        return;
+      }
       if (isIOS && !isStandalone) {
-        toast('Install as PWA first — iOS needs home screen app for notifications');
+        alert('Install as PWA first:\n\n1. Tap the Share button (□↑) in Safari\n2. Tap "Add to Home Screen"\n3. Open from home screen\n4. Then enable notifications');
         return;
       }
 
