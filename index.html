@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.7.2'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.8.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -839,8 +839,11 @@
 
     // ---- Service Worker ----
     function registerSW() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      // OneSignal registers OneSignalSDKWorker.js as the service worker.
+      // That file also includes our offline caching logic.
+      // Only register manually if OneSignal is not configured.
+      if ('serviceWorker' in navigator && (!window.CONFIG || !window.CONFIG.ONESIGNAL_APP_ID || window.CONFIG.ONESIGNAL_APP_ID === 'PASTE_YOUR_ONESIGNAL_APP_ID_HERE')) {
+        navigator.serviceWorker.register('OneSignalSDKWorker.js').catch(() => {});
       }
     }
 
@@ -1682,7 +1685,7 @@
         safari_web_id: window.CONFIG.ONESIGNAL_SAFARI_WEB_ID,
         notifyButton: { enable: false },
         serviceWorkerParam: { scope: '/momMeds/' },
-        serviceWorkerPath: '/momMeds/sw.js'
+        serviceWorkerPath: '/momMeds/OneSignalSDKWorker.js'
       });
     });
   }
