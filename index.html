@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.4.1'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.5.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1330,44 +1330,63 @@
         }
         toggle.classList.remove('on');
         toast('Notifications disabled');
-      } else {
-        // Subscribe
-        if (!window.OneSignal) {
-          toast('OneSignal not loaded. Try installing as app first.');
-          return;
-        }
-        window.OneSignal.Notifications.requestPermission()
-          .then(() => {
-            // v16 SDK: requestPermission doesn't return bool, check state after
-            const permission = window.OneSignal.Notifications.permission;
-            if (!permission) {
-              toast('Permission denied — check browser settings');
-              return;
-            }
-            // Opt in and wait for subscription ID
-            return window.OneSignal.User.PushSubscription.optIn();
-          })
-          .then(() => {
-            // Subscription ID may take a moment to populate
-            const tryGetId = (retries) => {
-              const subId = window.OneSignal.User.PushSubscription.id;
-              if (subId) {
-                const label = localStorage.getItem('eyemeds-device-label') || guessDeviceLabel();
-                api('subscribe', { subscriptionId: subId, deviceLabel: label })
-                  .then(() => { toggle.classList.add('on'); toast('Notifications enabled!'); fetchState(); })
-                  .catch(() => { toast('Error saving subscription'); });
-              } else if (retries > 0) {
-                setTimeout(() => tryGetId(retries - 1), 500);
-              } else {
-                toast('Could not get subscription ID — try again');
-              }
-            };
-            tryGetId(6);
-          })
-          .catch(e => {
-            toast('Error: ' + (e.message || 'permission denied'));
-          });
+        return;
       }
+
+      // Subscribe flow
+      if (!window.OneSignal) {
+        toast('OneSignal not loaded. Try installing as app first.');
+        return;
+      }
+
+      toast('Requesting permission…');
+
+      // Listen for subscription change — this fires after permission + opt-in completes
+      const onSubscriptionChange = (event) => {
+        window.OneSignal.User.PushSubscription.removeEventListener('change', onSubscriptionChange);
+        if (event.current.token) {
+          // Wait for ID to populate
+          const tryGetId = (retries) => {
+            const subId = window.OneSignal.User.PushSubscription.id;
+            if (subId) {
+              const label = localStorage.getItem('eyemeds-device-label') || guessDeviceLabel();
+              api('subscribe', { subscriptionId: subId, deviceLabel: label })
+                .then(() => { toggle.classList.add('on'); toast('Notifications enabled!'); fetchState(); })
+                .catch(() => { toast('Error saving subscription'); });
+            } else if (retries > 0) {
+              setTimeout(() => tryGetId(retries - 1), 500);
+            } else {
+              toggle.classList.add('on');
+              toast('Notifications enabled (subscription pending)');
+            }
+          };
+          tryGetId(10);
+        }
+      };
+      window.OneSignal.User.PushSubscription.addEventListener('change', onSubscriptionChange);
+
+      // Request permission then opt in
+      window.OneSignal.Notifications.requestPermission()
+        .then(() => {
+          // On v16, this resolves after the user responds to the prompt
+          if (window.OneSignal.Notifications.permission) {
+            return window.OneSignal.User.PushSubscription.optIn();
+          } else {
+            window.OneSignal.User.PushSubscription.removeEventListener('change', onSubscriptionChange);
+            toast('Permission denied — check browser/OS notification settings');
+          }
+        })
+        .catch(e => {
+          window.OneSignal.User.PushSubscription.removeEventListener('change', onSubscriptionChange);
+          // Some browsers don't support Notification API (e.g., non-PWA iOS Safari)
+          const isIOS = /iPhone|iPad/.test(navigator.userAgent);
+          const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+          if (isIOS && !isStandalone) {
+            toast('Install as PWA first — iOS requires home screen app for notifications');
+          } else {
+            toast('Error: ' + (e.message || 'could not request permission'));
+          }
+        });
     }
 
     function removeDevice(subId) {

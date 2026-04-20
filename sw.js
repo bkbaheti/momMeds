@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eyemeds-v5';
+const CACHE_NAME = 'eyemeds-v6';
 const ASSETS = [
   './',
   './index.html',
