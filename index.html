@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.7.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.7.1'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1340,7 +1340,8 @@
 
       // iOS checks
       const isIOS = /iPhone|iPad/.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator.standalone === true); // iOS Safari fallback
       const isSafari = /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(navigator.userAgent);
 
       if (isIOS && !isSafari && !isStandalone) {
@@ -1355,7 +1356,6 @@
       try {
         // Check native permission state first
         const nativePerm = typeof Notification !== 'undefined' ? Notification.permission : 'default';
-        const isIOS = /iPhone|iPad/.test(navigator.userAgent);
 
         if (nativePerm === 'denied') {
           // Permission was previously denied — can't re-prompt from code
