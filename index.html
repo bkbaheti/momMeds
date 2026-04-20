@@ -1377,7 +1377,11 @@
     script.defer = true;
     document.head.appendChild(script);
     window.OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({ appId: window.CONFIG.ONESIGNAL_APP_ID });
+      await OneSignal.init({
+        appId: window.CONFIG.ONESIGNAL_APP_ID,
+        safari_web_id: window.CONFIG.ONESIGNAL_SAFARI_WEB_ID,
+        notifyButton: { enable: true }
+      });
     });
   }
 
