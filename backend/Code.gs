@@ -79,14 +79,14 @@ function formatTimeHHMM(date) {
 }
 
 function todayDate() {
-  // Use IST (UTC+5:30) for consistency
+  // Apps Script uses project timezone (Asia/Kolkata). new Date() is already IST.
   const now = new Date();
-  const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 function nowIST() {
-  return new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+  // Apps Script project timezone is Asia/Kolkata — no manual offset needed
+  return new Date();
 }
 
 // ---- Settings ----
@@ -94,20 +94,32 @@ function nowIST() {
 function readSettings() {
   const sheet = getSheet('Settings');
   const data = sheet.getDataRange().getValues();
-  const settings = {};
+  const raw = {};
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) settings[data[i][0]] = data[i][1];
+    if (data[i][0]) {
+      let val = data[i][1];
+      // Google Sheets auto-converts time strings to Date objects — convert back
+      if (val instanceof Date) {
+        const key = data[i][0];
+        if (key === 'startDate') {
+          // Format as YYYY-MM-DD
+          val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        } else if (key === 'wakeTime' || key === 'bedTime') {
+          // Format as HH:mm
+          val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'HH:mm');
+        }
+      }
+      raw[data[i][0]] = val;
+    }
   }
-  // Defaults
   return {
-    wakeTime: settings.wakeTime || '07:00',
-    bedTime: settings.bedTime || '22:00',
-    startDate: settings.startDate || '2026-04-19',
-    minGapMinutes: parseInt(settings.minGapMinutes) || 10,
-    graceMinutes: parseInt(settings.graceMinutes) || 20,
-    missMinutes: parseInt(settings.missMinutes) || 90,
-    amplinakActive: settings.amplinakActive !== 'false',
-    ...settings
+    wakeTime: raw.wakeTime || '07:00',
+    bedTime: raw.bedTime || '22:00',
+    startDate: raw.startDate || '2026-04-19',
+    minGapMinutes: parseInt(raw.minGapMinutes) || 10,
+    graceMinutes: parseInt(raw.graceMinutes) || 20,
+    missMinutes: parseInt(raw.missMinutes) || 90,
+    amplinakActive: raw.amplinakActive !== 'false' && raw.amplinakActive !== false
   };
 }
 

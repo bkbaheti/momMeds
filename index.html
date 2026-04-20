@@ -592,6 +592,23 @@
         Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / msDay);
     }
 
+    // Normalize settings values that Google Sheets may have converted to Date objects
+    function normalizeSettings(s) {
+      const ns = Object.assign({}, s);
+      // wakeTime/bedTime: could be "07:00" or ISO date string "1899-12-30T01:30:00.000Z"
+      if (ns.wakeTime && ns.wakeTime.length > 5) {
+        try { const d = new Date(ns.wakeTime); ns.wakeTime = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); } catch(_) { ns.wakeTime = '07:00'; }
+      }
+      if (ns.bedTime && ns.bedTime.length > 5) {
+        try { const d = new Date(ns.bedTime); ns.bedTime = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); } catch(_) { ns.bedTime = '22:00'; }
+      }
+      // startDate: could be "2026-04-19" or ISO datetime
+      if (ns.startDate && ns.startDate.length > 10) {
+        try { const d = new Date(ns.startDate); ns.startDate = d.toISOString().slice(0, 10); } catch(_) { ns.startDate = '2026-04-19'; }
+      }
+      return ns;
+    }
+
     function activeDrugs(date, settings) {
       const start = new Date(settings.startDate + 'T00:00:00');
       const day = daysBetween(start, date);
@@ -759,6 +776,7 @@
 
     // ---- Rendering ----
     function render() {
+      state.settings = normalizeSettings(state.settings || {});
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       scheduleToday = computeSchedule(today, state.settings);
