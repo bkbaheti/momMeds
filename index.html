@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.5.3'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.6.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1404,15 +1404,60 @@
           toast('Notifications enabled!');
           fetchState();
         } else {
-          // Show debug info so we can diagnose
-          const debugInfo = 'permission=' + OS.Notifications.permission +
-            ' optedIn=' + OS.User.PushSubscription.optedIn +
-            ' token=' + (OS.User.PushSubscription.token ? 'yes' : 'no');
-          toast('No subscription ID. Debug: ' + debugInfo);
+          showPushDebug('No subscription ID after 10s polling', OS);
         }
       } catch(e) {
-        toast('Error: ' + (e.message || 'unknown'));
+        showPushDebug('Error: ' + (e.message || 'unknown'), window.OneSignal);
       }
+    }
+
+    function showPushDebug(reason, OS) {
+      let info = 'PUSH NOTIFICATION DEBUG\n';
+      info += '=======================\n';
+      info += 'Reason: ' + reason + '\n\n';
+
+      try {
+        info += 'OneSignal loaded: ' + !!OS + '\n';
+        if (OS) {
+          info += 'OS.Notifications.permission: ' + OS.Notifications.permission + '\n';
+          info += 'OS.Notifications.isPushSupported: ' + (OS.Notifications.isPushSupported ? OS.Notifications.isPushSupported() : 'N/A') + '\n';
+          info += 'OS.User.PushSubscription.id: ' + (OS.User.PushSubscription.id || 'null') + '\n';
+          info += 'OS.User.PushSubscription.token: ' + (OS.User.PushSubscription.token ? 'present (' + OS.User.PushSubscription.token.substring(0, 20) + '...)' : 'null') + '\n';
+          info += 'OS.User.PushSubscription.optedIn: ' + OS.User.PushSubscription.optedIn + '\n';
+        }
+      } catch(e) { info += 'Error reading OS state: ' + e.message + '\n'; }
+
+      try {
+        info += '\nNative Notification.permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'Notification API unavailable') + '\n';
+      } catch(e) { info += 'Notification API error: ' + e.message + '\n'; }
+
+      info += 'Is standalone PWA: ' + window.matchMedia('(display-mode: standalone)').matches + '\n';
+      info += 'User agent: ' + navigator.userAgent.substring(0, 100) + '\n';
+      info += 'ServiceWorker supported: ' + ('serviceWorker' in navigator) + '\n';
+
+      try {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          const swInfo = regs.map(r => r.scope).join(', ') || 'none';
+          info += 'SW registrations: ' + swInfo + '\n';
+        });
+      } catch(e) {}
+
+      info += '\nFrontend: ' + FRONTEND_VERSION + '\n';
+      info += 'Config App ID: ' + (window.CONFIG?.ONESIGNAL_APP_ID || 'missing') + '\n';
+
+      // Show in a persistent modal with copy button
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:16px;padding:20px;max-width:400px;width:100%;max-height:80vh;overflow:auto">
+          <h3 style="color:#dc2626;margin-bottom:12px">Push Notification Error</h3>
+          <pre id="pushDebugText" style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto">${info}</pre>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button onclick="navigator.clipboard.writeText(document.getElementById('pushDebugText').textContent).then(()=>this.textContent='Copied!')" style="flex:1;padding:10px;background:#1e40af;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">Copy to clipboard</button>
+            <button onclick="this.closest('div').closest('div').closest('div').remove()" style="flex:1;padding:10px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
     }
 
     function removeDevice(subId) {
