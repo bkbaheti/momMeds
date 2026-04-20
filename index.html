@@ -275,6 +275,18 @@
     }
     .shake { animation: shake 0.3s ease-in-out; }
 
+    /* ---- View-only mode ---- */
+    body.view-only .hero-actions,
+    body.view-only .dolo-btn,
+    body.view-only .danger-zone { display: none; }
+    body.view-only .timeline-row { cursor: default; }
+    body.view-only .timeline-row:active { background: none; }
+    .view-only-banner {
+      display: none; background: #eff6ff; color: #1e40af;
+      text-align: center; padding: 8px; font-size: 13px; font-weight: 500;
+    }
+    body.view-only .view-only-banner { display: block; }
+
     /* ---- Device Label Prompt ---- */
     .device-prompt {
       position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -308,6 +320,7 @@
     </div>
   </div>
   <div class="offline-banner" id="offlineBanner">⚠ Offline — showing last synced data</div>
+  <div class="view-only-banner">🔒 View only — enable Edit Mode in Settings to log doses</div>
 
   <!-- Home Tab -->
   <div class="tab-content active" id="tabHome">
@@ -371,6 +384,15 @@
         <span class="setting-label">Amplinak active</span>
         <div class="toggle on" id="toggleAmplinak" onclick="App.toggleAmplinak()"></div>
       </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Edit Mode</h3>
+      <div class="setting-row">
+        <span class="setting-label">Allow logging & editing doses</span>
+        <div class="toggle" id="toggleEditMode" onclick="App.toggleEditMode()"></div>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin-top:4px">When off, this device can only view the schedule. Per-device setting.</p>
     </div>
 
     <div class="settings-section">
@@ -522,7 +544,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.2.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.3.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -535,6 +557,7 @@
     // ---- Init ----
     function init() {
       checkDeviceLabel();
+      applyEditMode();
       loadFromCache();
       fetchState();
       startCountdown();
@@ -1089,6 +1112,7 @@
     // ---- Actions ----
 
     function logNow(drug, scheduledAt) {
+      if (!guardEdit()) return;
       const entry = {
         drug, eye: DRUGS[drug].eye,
         actualAt: new Date().toISOString(),
@@ -1120,6 +1144,7 @@
     }
 
     function showLogModal(drug, scheduledAt) {
+      if (!guardEdit()) return;
       document.getElementById('logDrug').value = drug || 'ocupol';
       updateLogDrugEye();
       let prefillDate, prefillTime;
@@ -1175,6 +1200,7 @@
     }
 
     function showEditModal(id, drug, actualAt) {
+      if (!guardEdit()) return;
       editingLogId = id;
       document.getElementById('editDrug').value = DRUGS[drug].name;
       document.getElementById('editTime').value = new Date(actualAt).toTimeString().slice(0, 5);
@@ -1226,6 +1252,32 @@
     function toggleAmplinak() {
       const current = state.settings.amplinakActive !== false && state.settings.amplinakActive !== 'false';
       saveSetting('amplinakActive', !current ? 'true' : 'false');
+    }
+
+    function isEditMode() {
+      return localStorage.getItem('eyemeds-edit-mode') === 'true';
+    }
+
+    function toggleEditMode() {
+      const on = !isEditMode();
+      localStorage.setItem('eyemeds-edit-mode', on ? 'true' : 'false');
+      applyEditMode();
+      toast(on ? 'Edit mode on' : 'View-only mode');
+    }
+
+    function applyEditMode() {
+      const on = isEditMode();
+      document.body.classList.toggle('view-only', !on);
+      const toggle = document.getElementById('toggleEditMode');
+      if (toggle) toggle.classList.toggle('on', on);
+    }
+
+    function guardEdit() {
+      if (!isEditMode()) {
+        toast('Enable Edit Mode in Settings first');
+        return false;
+      }
+      return true;
     }
 
     function saveDeviceLabel(label) {
@@ -1453,7 +1505,7 @@
     return {
       init, logNow, logDolo, showLogModal, submitLog, showEditModal,
       submitEditLog, deleteEditLog, saveSetting, toggleAmplinak,
-      saveDeviceLabel, togglePush, removeDevice, showResetModal,
+      toggleEditMode, saveDeviceLabel, togglePush, removeDevice, showResetModal,
       checkResetPassword, executeReset, switchTab, setRange,
       exportCSV, closeModal, retrySync, saveInitialDeviceLabel
     };
