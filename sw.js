@@ -1,4 +1,7 @@
-const CACHE_NAME = 'eyemeds-v6';
+// Import OneSignal push notification handler
+importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+
+const CACHE_NAME = 'eyemeds-v7';
 const ASSETS = [
   './',
   './index.html',
