@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.5.1'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.5.2'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1347,12 +1347,34 @@
       }
 
       try {
+        // Check native permission state first
+        const nativePerm = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+        const isIOS = /iPhone|iPad/.test(navigator.userAgent);
+
+        if (nativePerm === 'denied') {
+          // Permission was previously denied — can't re-prompt from code
+          if (isIOS) {
+            alert('Notifications were previously blocked.\n\nTo fix:\n1. Delete the EyeMeds app from home screen\n2. Go to Safari → clear website data for this site\n3. Re-install the PWA from the browser\n4. Allow notifications when prompted');
+          } else {
+            alert('Notifications are blocked.\n\nTo fix:\n1. Tap the lock/info icon in the address bar\n2. Find Notifications → set to Allow\n3. Reload and try again');
+          }
+          return;
+        }
+
         // Step 1: Request permission
         toast('Step 1/3: Requesting permission…');
         await OS.Notifications.requestPermission();
 
-        if (!OS.Notifications.permission) {
-          toast('Permission denied — check notification settings');
+        // Check both OneSignal and native permission
+        const granted = OS.Notifications.permission ||
+          (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+
+        if (!granted) {
+          if (isIOS) {
+            alert('Permission not granted.\n\nTo fix:\n1. Delete the EyeMeds app from home screen\n2. Re-add it from Safari\n3. Allow notifications when prompted');
+          } else {
+            toast('Permission denied — check notification settings');
+          }
           return;
         }
 
