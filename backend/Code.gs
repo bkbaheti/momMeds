@@ -3,6 +3,7 @@
 // Sheet ID: 1ffgPdEHv-urkjMj1Rq9P66GoLFM_PBhTcOdvCTqj9eI
 // ============================================================
 
+const BACKEND_VERSION = '1.1.0'; // Bump this on every Code.gs update
 const SHEET_ID = '1ffgPdEHv-urkjMj1Rq9P66GoLFM_PBhTcOdvCTqj9eI';
 const PROPS = PropertiesService.getScriptProperties();
 
@@ -622,7 +623,8 @@ function handleState() {
     settings,
     logs,
     subscriptions: subs,
-    serverTime: toISO(new Date())
+    serverTime: toISO(new Date()),
+    backendVersion: BACKEND_VERSION
   });
 }
 

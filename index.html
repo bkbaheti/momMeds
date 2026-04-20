@@ -300,7 +300,10 @@
   <!-- Header -->
   <div class="header">
     <h1>Mom's Eye Meds 💧</h1>
-    <div class="sync-indicator synced" id="syncIndicator" onclick="App.retrySync()">✓ Synced</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div id="versionBadge" style="font-size:10px;opacity:0.6"></div>
+      <div class="sync-indicator synced" id="syncIndicator" onclick="App.retrySync()">✓ Synced</div>
+    </div>
   </div>
   <div class="offline-banner" id="offlineBanner">⚠ Offline — showing last synced data</div>
 
@@ -516,6 +519,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
+    const FRONTEND_VERSION = '1.1.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -692,6 +696,7 @@
         if (cached && cached.state) {
           state = cached.state;
           render();
+          showVersion(state.backendVersion);
         }
       } catch (_) {}
     }
@@ -708,6 +713,7 @@
           saveToCache();
           render();
           setSyncStatus('synced');
+          showVersion(data.backendVersion);
           flushQueue();
         })
         .catch(() => {
@@ -736,6 +742,11 @@
 
     function showOfflineBanner(show) {
       document.getElementById('offlineBanner').classList.toggle('show', show);
+    }
+
+    function showVersion(backendVer) {
+      const el = document.getElementById('versionBadge');
+      el.textContent = 'F:' + FRONTEND_VERSION + ' B:' + (backendVer || '?');
     }
 
     // ---- Offline queue ----
