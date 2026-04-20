@@ -202,13 +202,6 @@
     }
     .toggle.on::after { transform: translateX(20px); }
 
-    /* Device list */
-    .device-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 0; font-size: 13px;
-    }
-    .device-remove { color: #ef4444; font-size: 12px; background: none; padding: 4px 8px; }
-
     /* Install instructions */
     .install-section { cursor: pointer; }
     .install-section .install-body { display: none; padding-top: 12px; }
@@ -396,21 +389,17 @@
     </div>
 
     <div class="settings-section">
-      <h3>Notifications</h3>
-      <div class="setting-row">
-        <span class="setting-label">Push notifications</span>
-        <div class="toggle" id="togglePush" onclick="App.togglePush()"></div>
-      </div>
+      <h3>Device</h3>
       <div class="setting-row">
         <span class="setting-label">Device label</span>
         <input type="text" class="setting-input" id="setDeviceLabel" style="width:150px" placeholder="My phone"
           onchange="App.saveDeviceLabel(this.value)">
       </div>
-      <div id="deviceList"></div>
+      <p style="font-size:12px;color:#94a3b8;margin-top:4px">Used to track who logged each dose.</p>
     </div>
 
     <div class="settings-section install-section" id="installSection" onclick="this.classList.toggle('open')">
-      <h3>📱 Install as app for reminders</h3>
+      <h3>📱 Install as app</h3>
       <div class="install-body" onclick="event.stopPropagation()">
         <div id="installInstructions"></div>
       </div>
@@ -428,7 +417,7 @@
 
     <div class="danger-zone">
       <h3>Danger Zone</h3>
-      <p style="font-size:13px;color:#991b1b;margin-top:4px">Reset all logs and notification history.</p>
+      <p style="font-size:13px;color:#991b1b;margin-top:4px">Reset all logs and data.</p>
       <button class="reset-btn" onclick="App.showResetModal()">Reset All Data</button>
       <div id="lastReset" style="font-size:12px;color:#991b1b;margin-top:8px"></div>
     </div>
@@ -526,7 +515,7 @@
   <div class="modal-overlay" id="resetModal2">
     <div class="modal">
       <h2>Type DELETE to confirm</h2>
-      <p style="font-size:14px;color:#64748b;margin-bottom:12px">This will erase all logs and notification history.</p>
+      <p style="font-size:14px;color:#64748b;margin-bottom:12px">This will erase all logs and data.</p>
       <div class="modal-field">
         <input type="text" id="resetConfirm" placeholder="Type DELETE" oninput="document.getElementById('resetGoBtn').disabled = this.value !== 'DELETE'">
       </div>
@@ -554,11 +543,11 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.8.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.9.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
-    let state = { settings: {}, logs: [], subscriptions: [] };
+    let state = { settings: {}, logs: [] };
     let scheduleToday = [];
     let countdownTimer = null;
     let editingLogId = null;
@@ -839,11 +828,8 @@
 
     // ---- Service Worker ----
     function registerSW() {
-      // OneSignal registers OneSignalSDKWorker.js as the service worker.
-      // That file also includes our offline caching logic.
-      // Only register manually if OneSignal is not configured.
-      if ('serviceWorker' in navigator && (!window.CONFIG || !window.CONFIG.ONESIGNAL_APP_ID || window.CONFIG.ONESIGNAL_APP_ID === 'PASTE_YOUR_ONESIGNAL_APP_ID_HERE')) {
-        navigator.serviceWorker.register('OneSignalSDKWorker.js').catch(() => {});
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
       }
     }
 
@@ -1027,15 +1013,6 @@
       ampToggle.classList.toggle('on', s.amplinakActive !== false && s.amplinakActive !== 'false');
 
       document.getElementById('setDeviceLabel').value = localStorage.getItem('eyemeds-device-label') || '';
-
-      // Device list
-      const deviceHtml = (state.subscriptions || [])
-        .filter(s => s.active)
-        .map(s => `<div class="device-row">
-          <span>${s.deviceLabel || 'Unknown'}</span>
-          <button class="device-remove" onclick="App.removeDevice('${s.subscriptionId}')">Remove</button>
-        </div>`).join('');
-      document.getElementById('deviceList').innerHTML = deviceHtml;
     }
 
     function renderHistory() {
@@ -1316,199 +1293,6 @@
       localStorage.setItem('eyemeds-device-label', label);
     }
 
-    // ---- Push notifications ----
-
-    async function togglePush() {
-      const toggle = document.getElementById('togglePush');
-      const OS = window.OneSignal;
-
-      if (toggle.classList.contains('on')) {
-        // Unsubscribe
-        if (OS) {
-          try {
-            const subId = OS.User.PushSubscription.id;
-            if (subId) api('unsubscribe', { subscriptionId: subId }).catch(() => {});
-            await OS.User.PushSubscription.optOut();
-          } catch(_) {}
-        }
-        toggle.classList.remove('on');
-        toast('Notifications disabled');
-        return;
-      }
-
-      if (!OS) {
-        toast('OneSignal not loaded. Try installing as app first.');
-        return;
-      }
-
-      // iOS checks
-      const isIOS = /iPhone|iPad/.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-        (navigator.standalone === true); // iOS Safari fallback
-      const isSafari = /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(navigator.userAgent);
-
-      if (isIOS && !isSafari && !isStandalone) {
-        alert('iOS notifications only work via Safari.\n\n1. Open this link in Safari (not Chrome)\n2. Add to Home Screen\n3. Open the PWA and enable notifications\n\nApple does not allow push notifications from Chrome or other browsers on iPhone.');
-        return;
-      }
-      if (isIOS && !isStandalone) {
-        alert('Install as PWA first:\n\n1. Tap the Share button (□↑) in Safari\n2. Tap "Add to Home Screen"\n3. Open from home screen\n4. Then enable notifications');
-        return;
-      }
-
-      try {
-        // Check native permission state first
-        const nativePerm = typeof Notification !== 'undefined' ? Notification.permission : 'default';
-
-        if (nativePerm === 'denied') {
-          // Permission was previously denied — can't re-prompt from code
-          if (isIOS) {
-            alert('Notifications were previously blocked.\n\nTo fix:\n1. Delete the EyeMeds app from home screen\n2. Go to Safari → clear website data for this site\n3. Re-install the PWA from the browser\n4. Allow notifications when prompted');
-          } else {
-            alert('Notifications are blocked.\n\nTo fix:\n1. Tap the lock/info icon in the address bar\n2. Find Notifications → set to Allow\n3. Reload and try again');
-          }
-          return;
-        }
-
-        // Step 1: Request permission
-        toast('Step 1/3: Requesting permission…');
-        await OS.Notifications.requestPermission();
-
-        // Check both OneSignal and native permission
-        const granted = OS.Notifications.permission ||
-          (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-
-        if (!granted) {
-          if (isIOS) {
-            alert('Permission not granted.\n\nTo fix:\n1. Delete the EyeMeds app from home screen\n2. Re-add it from Safari\n3. Allow notifications when prompted');
-          } else {
-            toast('Permission denied — check notification settings');
-          }
-          return;
-        }
-
-        // Step 2: Opt in
-        toast('Step 2/3: Subscribing…');
-        await OS.User.PushSubscription.optIn();
-
-        // Step 3: Get subscription ID (poll — it takes a moment)
-        toast('Step 3/3: Getting subscription ID…');
-        let subId = null;
-        for (let i = 0; i < 20; i++) {
-          subId = OS.User.PushSubscription.id;
-          if (subId) break;
-          await new Promise(r => setTimeout(r, 500));
-        }
-
-        if (subId) {
-          const label = localStorage.getItem('eyemeds-device-label') || guessDeviceLabel();
-          await api('subscribe', { subscriptionId: subId, deviceLabel: label });
-          toggle.classList.add('on');
-          toast('Notifications enabled!');
-          fetchState();
-        } else {
-          showPushDebug('No subscription ID after 10s polling', OS);
-        }
-      } catch(e) {
-        showPushDebug('Error: ' + (e.message || 'unknown'), window.OneSignal);
-      }
-    }
-
-    async function showPushDebug(reason, OS) {
-      let info = 'PUSH NOTIFICATION DEBUG\n';
-      info += '=======================\n';
-      info += 'Reason: ' + reason + '\n\n';
-
-      try {
-        info += 'OneSignal loaded: ' + !!OS + '\n';
-        if (OS) {
-          info += 'OS.Notifications.permission: ' + OS.Notifications.permission + '\n';
-          info += 'OS.Notifications.isPushSupported: ' + (OS.Notifications.isPushSupported ? OS.Notifications.isPushSupported() : 'N/A') + '\n';
-          info += 'OS.User.PushSubscription.id: ' + (OS.User.PushSubscription.id || 'null') + '\n';
-          info += 'OS.User.PushSubscription.token: ' + (OS.User.PushSubscription.token ? 'present (' + OS.User.PushSubscription.token.substring(0, 20) + '...)' : 'null') + '\n';
-          info += 'OS.User.PushSubscription.optedIn: ' + OS.User.PushSubscription.optedIn + '\n';
-        }
-      } catch(e) { info += 'Error reading OS state: ' + e.message + '\n'; }
-
-      try {
-        info += '\nNative Notification.permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'Notification API unavailable') + '\n';
-      } catch(e) { info += 'Notification API error: ' + e.message + '\n'; }
-
-      info += 'Is standalone PWA: ' + window.matchMedia('(display-mode: standalone)').matches + '\n';
-      info += 'User agent: ' + navigator.userAgent.substring(0, 100) + '\n';
-      info += 'ServiceWorker supported: ' + ('serviceWorker' in navigator) + '\n';
-
-      try {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        info += 'SW registrations: ' + (regs.map(r => r.scope).join(', ') || 'none') + '\n';
-        for (const r of regs) {
-          info += '  SW active: ' + (r.active ? r.active.scriptURL : 'none') + '\n';
-        }
-      } catch(e) { info += 'SW error: ' + e.message + '\n'; }
-
-      // Direct push subscription test
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        info += '\nSW ready scope: ' + reg.scope + '\n';
-        const existingSub = await reg.pushManager.getSubscription();
-        info += 'Existing push subscription: ' + (existingSub ? 'yes' : 'none') + '\n';
-        if (existingSub) {
-          info += 'Push endpoint: ' + existingSub.endpoint.substring(0, 60) + '...\n';
-        } else {
-          // Try to subscribe directly to see the error
-          try {
-            const sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: new Uint8Array(0) // dummy key to test
-            });
-            info += 'Direct subscribe: succeeded (unexpected)\n';
-          } catch(subErr) {
-            info += 'Direct subscribe error: ' + subErr.message + '\n';
-            info += 'Direct subscribe error name: ' + subErr.name + '\n';
-          }
-        }
-        info += 'pushManager permission: ' + (await reg.pushManager.permissionState({ userVisibleOnly: true })) + '\n';
-      } catch(e) { info += 'Push test error: ' + e.message + '\n'; }
-
-      info += '\nFrontend: ' + FRONTEND_VERSION + '\n';
-      info += 'Config App ID: ' + (window.CONFIG?.ONESIGNAL_APP_ID || 'missing') + '\n';
-
-      // Show in a persistent modal with copy button
-      const overlay = document.createElement('div');
-      overlay.id = 'pushDebugOverlay';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px';
-      overlay.innerHTML = `
-        <div style="background:#fff;border-radius:16px;padding:20px;max-width:400px;width:100%;max-height:80vh;overflow:auto">
-          <h3 style="color:#dc2626;margin-bottom:12px">Push Notification Error</h3>
-          <pre id="pushDebugText" style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto">${info}</pre>
-          <div style="display:flex;gap:8px;margin-top:12px">
-            <button id="pushDebugCopy" style="flex:1;padding:10px;background:#1e40af;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">Copy to clipboard</button>
-            <button id="pushDebugClose" style="flex:1;padding:10px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      document.getElementById('pushDebugCopy').addEventListener('click', function() {
-        const text = document.getElementById('pushDebugText').textContent;
-        navigator.clipboard.writeText(text).then(() => {
-          this.textContent = 'Copied!';
-          setTimeout(() => { this.textContent = 'Copy to clipboard'; }, 2000);
-        });
-      });
-      document.getElementById('pushDebugClose').addEventListener('click', function() {
-        document.getElementById('pushDebugOverlay').remove();
-      });
-      overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) overlay.remove();
-      });
-    }
-
-    function removeDevice(subId) {
-      if (!confirm('Remove this device from notifications?')) return;
-      api('unsubscribe', { subscriptionId: subId })
-        .then(() => { fetchState(); toast('Device removed'); })
-        .catch(() => { toast('Error removing'); });
-    }
-
     // ---- Reset ----
 
     function showResetModal() { openModal('resetModal1'); }
@@ -1554,14 +1338,13 @@
         <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
         <li>Tap <b>"Add"</b> in the top right</li>
         <li>Open the app from your home screen</li>
-        <li>When prompted, tap <b>"Allow"</b> for notifications</li>
-      </ol><p>⚠️ Must be <b>Safari</b> on <b>iOS 16.4+</b>.</p></div>`;
+      </ol></div>`;
 
       const androidInstructions = `<div class="install-steps"><h4>Android (Chrome)</h4><ol>
         <li>Tap the <b>⋮</b> menu (top right)</li>
         <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
         <li>Tap <b>"Install"</b></li>
-        <li>Open from home screen and allow notifications</li>
+        <li>Open from home screen</li>
       </ol></div>`;
 
       const desktopInstructions = `<div class="install-steps"><h4>Desktop</h4><ol>
@@ -1666,29 +1449,11 @@
     return {
       init, logNow, logDolo, showLogModal, submitLog, showEditModal,
       submitEditLog, deleteEditLog, saveSetting, toggleAmplinak,
-      toggleEditMode, forceRefresh, saveDeviceLabel, togglePush, removeDevice, showResetModal,
+      toggleEditMode, forceRefresh, saveDeviceLabel, showResetModal,
       checkResetPassword, executeReset, switchTab, setRange,
       exportCSV, closeModal, retrySync, saveInitialDeviceLabel
     };
   })();
-
-  // ---- OneSignal init ----
-  if (window.CONFIG && window.CONFIG.ONESIGNAL_APP_ID && window.CONFIG.ONESIGNAL_APP_ID !== 'PASTE_YOUR_ONESIGNAL_APP_ID_HERE') {
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    const script = document.createElement('script');
-    script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-    script.defer = true;
-    document.head.appendChild(script);
-    window.OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({
-        appId: window.CONFIG.ONESIGNAL_APP_ID,
-        safari_web_id: window.CONFIG.ONESIGNAL_SAFARI_WEB_ID,
-        notifyButton: { enable: false },
-        serviceWorkerParam: { scope: '/momMeds/' },
-        serviceWorkerPath: '/momMeds/OneSignalSDKWorker.js'
-      });
-    });
-  }
 
   // Boot
   document.addEventListener('DOMContentLoaded', App.init);
