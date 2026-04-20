@@ -416,6 +416,16 @@
       </div>
     </div>
 
+    <div class="settings-section">
+      <h3>App</h3>
+      <div class="setting-row">
+        <span class="setting-label">Version</span>
+        <span id="settingsVersion" style="font-size:13px;color:#94a3b8"></span>
+      </div>
+      <button style="width:100%;padding:12px;background:#1e40af;color:#fff;border-radius:8px;font-weight:600;margin-top:8px" onclick="App.forceRefresh()">🔄 Force Refresh App</button>
+      <p style="font-size:12px;color:#94a3b8;margin-top:6px">Clears cached files and reloads the latest version.</p>
+    </div>
+
     <div class="danger-zone">
       <h3>Danger Zone</h3>
       <p style="font-size:13px;color:#991b1b;margin-top:4px">Reset all logs and notification history.</p>
@@ -544,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.3.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.4.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -771,8 +781,27 @@
     }
 
     function showVersion(backendVer) {
-      const el = document.getElementById('versionBadge');
-      el.textContent = 'F:' + FRONTEND_VERSION + ' B:' + (backendVer || '?');
+      const ver = 'F:' + FRONTEND_VERSION + ' B:' + (backendVer || '?');
+      document.getElementById('versionBadge').textContent = ver;
+      const sv = document.getElementById('settingsVersion');
+      if (sv) sv.textContent = ver;
+    }
+
+    function forceRefresh() {
+      toast('Clearing cache…');
+      Promise.all([
+        // Unregister all service workers
+        navigator.serviceWorker ? navigator.serviceWorker.getRegistrations()
+          .then(regs => Promise.all(regs.map(r => r.unregister()))) : Promise.resolve(),
+        // Delete all caches
+        'caches' in window ? caches.keys()
+          .then(keys => Promise.all(keys.map(k => caches.delete(k)))) : Promise.resolve()
+      ]).then(() => {
+        // Hard reload bypassing cache
+        window.location.reload(true);
+      }).catch(() => {
+        window.location.reload(true);
+      });
     }
 
     // ---- Offline queue ----
@@ -1505,7 +1534,7 @@
     return {
       init, logNow, logDolo, showLogModal, submitLog, showEditModal,
       submitEditLog, deleteEditLog, saveSetting, toggleAmplinak,
-      toggleEditMode, saveDeviceLabel, togglePush, removeDevice, showResetModal,
+      toggleEditMode, forceRefresh, saveDeviceLabel, togglePush, removeDevice, showResetModal,
       checkResetPassword, executeReset, switchTab, setRange,
       exportCSV, closeModal, retrySync, saveInitialDeviceLabel
     };
