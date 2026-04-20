@@ -604,7 +604,11 @@
       }
       // startDate: could be "2026-04-19" or ISO datetime
       if (ns.startDate && ns.startDate.length > 10) {
-        try { const d = new Date(ns.startDate); ns.startDate = d.toISOString().slice(0, 10); } catch(_) { ns.startDate = '2026-04-19'; }
+        try {
+          const d = new Date(ns.startDate);
+          // Use local date parts, not UTC, to avoid timezone shift
+          ns.startDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        } catch(_) { ns.startDate = '2026-04-19'; }
       }
       return ns;
     }
