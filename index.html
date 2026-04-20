@@ -554,7 +554,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.6.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.6.1'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1641,7 +1641,9 @@
       await OneSignal.init({
         appId: window.CONFIG.ONESIGNAL_APP_ID,
         safari_web_id: window.CONFIG.ONESIGNAL_SAFARI_WEB_ID,
-        notifyButton: { enable: false }
+        notifyButton: { enable: false },
+        serviceWorkerParam: { scope: '/momMeds/' },
+        serviceWorkerPath: '/momMeds/OneSignalSDKWorker.js'
       });
     });
   }
