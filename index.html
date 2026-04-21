@@ -606,7 +606,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.11.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.11.1'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -1387,14 +1387,9 @@
         schedEl.parentElement.style.display = 'none';
       }
 
-      // Pre-fill time: scheduled time if it's already due/past, else current time.
-      const now = new Date();
-      let prefill;
-      if (scheduledAt && new Date(scheduledAt) <= now) {
-        prefill = new Date(scheduledAt);
-      } else {
-        prefill = now;
-      }
+      // Always pre-fill with the current time — the user is logging "I gave
+      // this just now". They can still edit it if they need to backdate.
+      const prefill = new Date();
       document.getElementById('confirmLogTime').value =
         String(prefill.getHours()).padStart(2,'0') + ':' + String(prefill.getMinutes()).padStart(2,'0');
       document.getElementById('confirmLogCaretaker').value =
