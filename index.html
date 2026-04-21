@@ -241,6 +241,16 @@
     .modal-field input, .modal-field select {
       width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1;
       border-radius: 8px; font-size: 15px;
+      background-color: #fff; color: #1a202c;
+    }
+    .modal-field input:focus, .modal-field select:focus {
+      outline: none; border-color: #1e40af;
+    }
+    .modal-field .field-display {
+      padding: 10px 0; font-size: 16px; font-weight: 600; color: #1a202c;
+    }
+    .modal-field .field-display .field-sub {
+      font-weight: 400; color: #64748b; font-size: 13px; margin-left: 6px;
     }
     .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
     .modal-actions button {
@@ -475,13 +485,40 @@
     </div>
   </div>
 
+  <!-- Confirm Log Modal (tap a scheduled row to log safely) -->
+  <div class="modal-overlay" id="confirmLogModal">
+    <div class="modal">
+      <h2>Log Dose</h2>
+      <div class="modal-field">
+        <label>Drug</label>
+        <div class="field-display" id="confirmLogDrug"></div>
+      </div>
+      <div class="modal-field">
+        <label>Scheduled</label>
+        <div class="field-display" id="confirmLogScheduled"></div>
+      </div>
+      <div class="modal-field">
+        <label>Time administered</label>
+        <input type="time" id="confirmLogTime">
+      </div>
+      <div class="modal-field">
+        <label>Caretaker (optional)</label>
+        <input type="text" id="confirmLogCaretaker" placeholder="Who gave the dose?">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="App.closeModal('confirmLogModal')">Cancel</button>
+        <button class="btn-confirm" onclick="App.submitConfirmLog()">Log</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit/Delete Log Modal -->
   <div class="modal-overlay" id="editModal">
     <div class="modal">
-      <h2>Edit Dose Log</h2>
+      <h2 id="editModalTitle">Edit Dose Log</h2>
       <div class="modal-field">
         <label>Drug</label>
-        <input type="text" id="editDrug" readonly>
+        <div class="field-display" id="editDrug"></div>
       </div>
       <div class="modal-field">
         <label>Time administered</label>
@@ -489,7 +526,7 @@
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="App.closeModal('editModal')">Cancel</button>
-        <button class="btn-danger" onclick="App.deleteEditLog()">Delete</button>
+        <button class="btn-danger" id="editDeleteBtn" onclick="App.deleteEditLog()">Clear log</button>
         <button class="btn-confirm" onclick="App.submitEditLog()">Save</button>
       </div>
     </div>
@@ -543,7 +580,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.9.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.10.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -551,7 +588,12 @@
     let scheduleToday = [];
     let countdownTimer = null;
     let editingLogId = null;
+    let editingLogDrug = null;
+    let pendingConfirmLog = null;
     let historyRange = 7;
+
+    // Drugs that are part of the scheduled regimen (vs PRN/as-needed)
+    const SCHEDULED_DRUGS = new Set(['ocupol', 'amplinak', 'pred_forte']);
 
     // ---- Init ----
     function init() {
@@ -953,12 +995,12 @@
           const who = log.caretaker ? ' · ' + log.caretaker : '';
           detail = 'Done ' + actualTime + who;
         } else if (!log && delta >= missMin) {
-          // Missed, no log — tap to log retroactively
-          onclick = `onclick="App.showLogModal('${slot.drug}', '${slot.scheduledAt}')"`;
+          // Missed, no log — tap to confirm a retroactive log
+          onclick = `onclick="App.showConfirmLogModal('${slot.drug}', '${slot.scheduledAt}')"`;
           detail = 'Missed — tap to log';
         } else if (!log) {
-          // Upcoming — tap to log now
-          onclick = `onclick="App.logNow('${slot.drug}', '${slot.scheduledAt}')"`;
+          // Upcoming / due — tap to confirm log (avoids mis-click direct log)
+          onclick = `onclick="App.showConfirmLogModal('${slot.drug}', '${slot.scheduledAt}')"`;
         } else {
           // Missed with log
           onclick = `onclick="App.showEditModal('${log.id}', '${slot.drug}', '${log.actualAt}')"`;
@@ -1208,11 +1250,89 @@
         .catch(() => { pushQueue('log', entry); });
     }
 
+    function showConfirmLogModal(drug, scheduledAt) {
+      if (!guardEdit()) return;
+      pendingConfirmLog = { drug, scheduledAt: scheduledAt || null };
+      const d = DRUGS[drug];
+      const eyeLabel = d.eye === 'L' ? 'Left eye' : 'Oral';
+      document.getElementById('confirmLogDrug').innerHTML =
+        d.name + '<span class="field-sub">' + eyeLabel + '</span>';
+
+      const schedEl = document.getElementById('confirmLogScheduled');
+      if (scheduledAt) {
+        schedEl.textContent = formatAMPM(new Date(scheduledAt));
+        schedEl.parentElement.style.display = '';
+      } else {
+        schedEl.parentElement.style.display = 'none';
+      }
+
+      // Pre-fill time: scheduled time if it's already due/past, else current time.
+      const now = new Date();
+      let prefill;
+      if (scheduledAt && new Date(scheduledAt) <= now) {
+        prefill = new Date(scheduledAt);
+      } else {
+        prefill = now;
+      }
+      document.getElementById('confirmLogTime').value =
+        String(prefill.getHours()).padStart(2,'0') + ':' + String(prefill.getMinutes()).padStart(2,'0');
+      document.getElementById('confirmLogCaretaker').value =
+        localStorage.getItem('eyemeds-device-label') || '';
+      openModal('confirmLogModal');
+    }
+
+    function submitConfirmLog() {
+      if (!pendingConfirmLog) { closeModal('confirmLogModal'); return; }
+      const { drug, scheduledAt } = pendingConfirmLog;
+      const time = document.getElementById('confirmLogTime').value;
+      if (!time) { toast('Please set a time'); return; }
+      const caretaker = document.getElementById('confirmLogCaretaker').value;
+
+      // Build actualAt from today's date + chosen time (local).
+      const now = new Date();
+      const [hh, mm] = time.split(':').map(Number);
+      const actual = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+      const actualAt = actual.toISOString();
+
+      const entry = {
+        drug, eye: DRUGS[drug].eye, actualAt,
+        scheduledAt: scheduledAt || null,
+        manualEntry: !!scheduledAt && new Date(scheduledAt) < now,
+        caretaker
+      };
+
+      // Optimistic update
+      state.logs = state.logs || [];
+      const tempId = 'temp-' + Date.now();
+      state.logs.push({ ...entry, id: tempId, status: 'taken', loggedAt: new Date().toISOString() });
+      saveToCache();
+      render();
+      closeModal('confirmLogModal');
+      pendingConfirmLog = null;
+      toast(DRUGS[drug].name + ' logged ✓');
+
+      api('log', entry)
+        .then(data => {
+          const idx = state.logs.findIndex(l => l.id === tempId);
+          if (idx >= 0 && data) state.logs[idx] = data;
+          saveToCache();
+          setSyncStatus('synced');
+        })
+        .catch(() => { pushQueue('log', entry); });
+    }
+
     function showEditModal(id, drug, actualAt) {
       if (!guardEdit()) return;
       editingLogId = id;
-      document.getElementById('editDrug').value = DRUGS[drug].name;
+      editingLogDrug = drug;
+      const d = DRUGS[drug];
+      const eyeLabel = d.eye === 'L' ? 'Left eye' : 'Oral';
+      document.getElementById('editDrug').innerHTML =
+        d.name + '<span class="field-sub">' + eyeLabel + '</span>';
       document.getElementById('editTime').value = new Date(actualAt).toTimeString().slice(0, 5);
+      // Scheduled meds: "Clear log" (slot goes back to unlogged). PRN: "Delete".
+      const btn = document.getElementById('editDeleteBtn');
+      btn.textContent = SCHEDULED_DRUGS.has(drug) ? 'Clear log' : 'Delete';
       openModal('editModal');
     }
 
@@ -1235,16 +1355,22 @@
     }
 
     function deleteEditLog() {
-      if (!confirm('Delete this dose log?')) return;
-      state.logs = (state.logs || []).filter(l => l.id !== editingLogId);
+      const isScheduled = SCHEDULED_DRUGS.has(editingLogDrug);
+      const promptMsg = isScheduled
+        ? 'Clear this dose log? The scheduled slot will show as unlogged again.'
+        : 'Delete this dose log?';
+      if (!confirm(promptMsg)) return;
+
+      const idToDelete = editingLogId;
+      state.logs = (state.logs || []).filter(l => l.id !== idToDelete);
       saveToCache();
       render();
       closeModal('editModal');
-      toast('Deleted');
+      toast(isScheduled ? 'Log cleared' : 'Deleted');
 
-      api('deleteLog', { id: editingLogId })
-        .then(() => { setSyncStatus('synced'); })
-        .catch(() => { pushQueue('deleteLog', { id: editingLogId }); });
+      api('deleteLog', { id: idToDelete })
+        .then(() => { setSyncStatus('synced'); fetchState(); })
+        .catch(() => { pushQueue('deleteLog', { id: idToDelete }); });
     }
 
     // ---- Settings ----
@@ -1448,7 +1574,8 @@
     // ---- Public API ----
     return {
       init, logNow, logDolo, showLogModal, submitLog, showEditModal,
-      submitEditLog, deleteEditLog, saveSetting, toggleAmplinak,
+      submitEditLog, deleteEditLog, showConfirmLogModal, submitConfirmLog,
+      saveSetting, toggleAmplinak,
       toggleEditMode, forceRefresh, saveDeviceLabel, showResetModal,
       checkResetPassword, executeReset, switchTab, setRange,
       exportCSV, closeModal, retrySync, saveInitialDeviceLabel
