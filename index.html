@@ -261,6 +261,25 @@
     .btn-danger { background: #dc2626; color: #fff; }
     .btn-confirm:disabled { opacity: 0.5; }
 
+    /* ---- Pending Sync ---- */
+    .pending-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .pending-row:last-child { border-bottom: none; }
+    .pending-info { flex: 1; min-width: 0; }
+    .pending-action { font-size: 14px; font-weight: 500; color: #1a202c; }
+    .pending-detail { font-size: 12px; color: #64748b; margin-top: 2px; word-break: break-all; }
+    .pending-remove {
+      background: #fee2e2; color: #dc2626; border-radius: 8px;
+      width: 32px; height: 32px; font-size: 14px; flex-shrink: 0;
+    }
+    .pending-empty { font-size: 13px; color: #94a3b8; padding: 8px 0; }
+    .pending-clear-all {
+      background: #dc2626; color: #fff; padding: 10px 16px;
+      border-radius: 8px; font-weight: 600; width: 100%; margin-top: 12px;
+    }
+
     /* ---- Toast ---- */
     .toast {
       position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
@@ -406,6 +425,13 @@
           onchange="App.saveDeviceLabel(this.value)">
       </div>
       <p style="font-size:12px;color:#94a3b8;margin-top:4px">Used to track who logged each dose.</p>
+    </div>
+
+    <div class="settings-section" id="pendingSyncSection" style="display:none">
+      <h3>Pending Sync</h3>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:8px">Changes that haven't reached the server yet. Discard any that are stuck.</p>
+      <div id="pendingSyncList"></div>
+      <button class="pending-clear-all" onclick="App.clearAllPending()">Clear all</button>
     </div>
 
     <div class="settings-section install-section" id="installSection" onclick="this.classList.toggle('open')">
@@ -580,7 +606,7 @@
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
     const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.10.0'; // Bump this on every index.html update
+    const FRONTEND_VERSION = '1.11.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -608,6 +634,9 @@
       updateLogDrugEye();
 
       document.getElementById('logDrug').addEventListener('change', updateLogDrugEye);
+      renderPendingSync();
+      // Reflect any leftover queued items in the indicator immediately
+      if (getQueue().length > 0) setSyncStatus('pending');
 
       // Auto-expand install section on first visit if not standalone
       if (!window.matchMedia('(display-mode: standalone)').matches && !localStorage.getItem('eyemeds-installed')) {
@@ -751,7 +780,11 @@
       return fetch(url, opts)
         .then(r => r.json())
         .then(data => {
-          if (!data.ok) throw new Error(data.error || 'API error');
+          if (!data.ok) {
+            const e = new Error(data.error || 'API error');
+            e.serverResponded = true; // distinguish from network failure
+            throw e;
+          }
           return data.data;
         });
     }
@@ -844,23 +877,110 @@
       q.push({ action, body, queuedAt: new Date().toISOString() });
       localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
       setSyncStatus('pending');
+      renderPendingSync();
     }
     function flushQueue() {
       const q = getQueue();
-      if (q.length === 0) return;
+      if (q.length === 0) { renderPendingSync(); return; }
       const item = q.shift();
       localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
       api(item.action, item.body)
-        .then(() => { flushQueue(); })
-        .catch(() => {
+        .then(() => { renderPendingSync(); flushQueue(); })
+        .catch((err) => {
+          // If the server responded with an error, retrying won't help
+          // (e.g. deleteLog/editLog of an id the server doesn't have).
+          // Drop the item so the queue doesn't get stuck forever.
+          if (err && err.serverResponded) {
+            console.warn('Dropping stuck queue item:', item.action, item.body, '-', err.message);
+            renderPendingSync();
+            flushQueue();
+            return;
+          }
           q.unshift(item);
           localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
           setSyncStatus('pending');
+          renderPendingSync();
         });
     }
 
     function retrySync() {
+      if (getQueue().length > 0) {
+        // Jump to Settings → Pending Sync so the user can act on stuck items
+        const settingsBtn = document.querySelector('.nav-tab[data-tab="tabSettings"]');
+        if (settingsBtn) switchTab('tabSettings', settingsBtn);
+        setTimeout(() => {
+          const sec = document.getElementById('pendingSyncSection');
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
       fetchState();
+    }
+
+    // ---- Pending Sync UI ----
+    function describeQueueItem(item) {
+      const a = item.action;
+      const b = item.body || {};
+      const queuedAt = item.queuedAt ? new Date(item.queuedAt) : null;
+      const queuedStr = queuedAt ? queuedAt.toLocaleString() : '';
+      if (a === 'log') {
+        const drug = (DRUGS[b.drug] || {}).name || b.drug || 'drug';
+        const at = b.actualAt ? formatAMPM(new Date(b.actualAt)) : '';
+        return { title: 'Log ' + drug, detail: 'time ' + at + ' · queued ' + queuedStr };
+      }
+      if (a === 'editLog') {
+        const at = b.actualAt ? formatAMPM(new Date(b.actualAt)) : '';
+        return { title: 'Edit log', detail: 'id=' + b.id + ' → ' + at + ' · queued ' + queuedStr };
+      }
+      if (a === 'deleteLog') {
+        return { title: 'Delete log', detail: 'id=' + b.id + ' · queued ' + queuedStr };
+      }
+      if (a === 'settings') {
+        return { title: 'Update setting', detail: b.key + ' = ' + b.value + ' · queued ' + queuedStr };
+      }
+      return { title: a, detail: queuedStr };
+    }
+
+    function renderPendingSync() {
+      const section = document.getElementById('pendingSyncSection');
+      const list = document.getElementById('pendingSyncList');
+      if (!section || !list) return;
+      const q = getQueue();
+      if (q.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = '';
+      list.innerHTML = q.map((item, i) => {
+        const d = describeQueueItem(item);
+        return '<div class="pending-row">' +
+          '<div class="pending-info">' +
+            '<div class="pending-action">' + d.title + '</div>' +
+            '<div class="pending-detail">' + d.detail + '</div>' +
+          '</div>' +
+          '<button class="pending-remove" onclick="App.removePendingItem(' + i + ')" aria-label="Discard">✕</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function removePendingItem(i) {
+      const q = getQueue();
+      if (i < 0 || i >= q.length) return;
+      if (!confirm('Discard this pending change?')) return;
+      q.splice(i, 1);
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+      setSyncStatus(q.length > 0 ? 'pending' : 'synced');
+      renderPendingSync();
+      toast('Discarded');
+    }
+
+    function clearAllPending() {
+      const q = getQueue();
+      if (q.length === 0) return;
+      if (!confirm('Discard all ' + q.length + ' pending change' + (q.length === 1 ? '' : 's') + '?')) return;
+      localStorage.setItem(QUEUE_KEY, JSON.stringify([]));
+      setSyncStatus('synced');
+      renderPendingSync();
+      toast('Cleared ' + q.length + ' pending');
     }
 
     function setupOnlineListener() {
@@ -1055,6 +1175,7 @@
       ampToggle.classList.toggle('on', s.amplinakActive !== false && s.amplinakActive !== 'false');
 
       document.getElementById('setDeviceLabel').value = localStorage.getItem('eyemeds-device-label') || '';
+      renderPendingSync();
     }
 
     function renderHistory() {
@@ -1578,7 +1699,8 @@
       saveSetting, toggleAmplinak,
       toggleEditMode, forceRefresh, saveDeviceLabel, showResetModal,
       checkResetPassword, executeReset, switchTab, setRange,
-      exportCSV, closeModal, retrySync, saveInitialDeviceLabel
+      exportCSV, closeModal, retrySync, saveInitialDeviceLabel,
+      removePendingItem, clearAllPending
     };
   })();
 
