@@ -391,6 +391,10 @@
         <input type="date" class="setting-input" id="setStartDate" style="width:140px" onchange="App.saveSetting('startDate', this.value)">
       </div>
       <div class="setting-row">
+        <span class="setting-label">Pred Forte taper start</span>
+        <input type="date" class="setting-input" id="setPredForteStart" style="width:140px" onchange="App.saveSetting('predForteStartDate', this.value)">
+      </div>
+      <div class="setting-row">
         <span class="setting-label">Min gap (min)</span>
         <input type="number" class="setting-input" id="setMinGap" min="1" max="60" onchange="App.saveSetting('minGapMinutes', this.value)">
       </div>
@@ -605,8 +609,8 @@
       pred_forte: { name: 'Pred Forte', fullName: 'Pred Forte (Prednisolone 1%)', eye: 'L', priority: 3 },
       dolo: { name: 'Dolo 650', fullName: 'Dolo 650 (Paracetamol)', eye: 'oral', priority: 99 }
     };
-    const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
-    const FRONTEND_VERSION = '1.11.1'; // Bump this on every index.html update
+    const PRED_TAPER = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
+    const FRONTEND_VERSION = '1.12.0'; // Bump this on every index.html update
     const CACHE_KEY = 'eyedrops-cache-v1';
     const QUEUE_KEY = 'eyedrops-queue-v1';
 
@@ -710,19 +714,30 @@
           ns.startDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         } catch(_) { ns.startDate = '2026-04-19'; }
       }
+      // predForteStartDate: anchor for the pred-forte taper. May be different
+      // from treatment startDate when a fresh taper is prescribed mid-course.
+      if (ns.predForteStartDate && ns.predForteStartDate.length > 10) {
+        try {
+          const d = new Date(ns.predForteStartDate);
+          ns.predForteStartDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        } catch(_) { ns.predForteStartDate = ''; }
+      }
       return ns;
     }
 
     function activeDrugs(date, settings) {
       const start = new Date(settings.startDate + 'T00:00:00');
       const day = daysBetween(start, date);
+      const predStart = new Date((settings.predForteStartDate || settings.startDate) + 'T00:00:00');
+      const predDay = daysBetween(predStart, date);
       const drugs = [];
       if (day >= 0 && day < 7) drugs.push({ id: 'ocupol', freq: 4 });
       if (day >= 0 && settings.amplinakActive !== false && settings.amplinakActive !== 'false')
         drugs.push({ id: 'amplinak', freq: 3 });
-      if (day >= 0) {
-        const week = Math.floor(day / 7) + 1;
-        if (week <= 6) drugs.push({ id: 'pred_forte', freq: PRED_TAPER[week] });
+      if (predDay >= 0) {
+        const week = Math.floor(predDay / 7) + 1;
+        const taperWeeks = Object.keys(PRED_TAPER).length;
+        if (week <= taperWeeks) drugs.push({ id: 'pred_forte', freq: PRED_TAPER[week] });
       }
       return drugs;
     }
@@ -1167,6 +1182,7 @@
       document.getElementById('setWakeTime').value = s.wakeTime || '07:00';
       document.getElementById('setBedTime').value = s.bedTime || '22:00';
       document.getElementById('setStartDate').value = s.startDate || '2026-04-19';
+      document.getElementById('setPredForteStart').value = s.predForteStartDate || s.startDate || '2026-04-19';
       document.getElementById('setMinGap').value = s.minGapMinutes || 10;
       document.getElementById('setGrace').value = s.graceMinutes || 20;
       document.getElementById('setMiss').value = s.missMinutes || 90;

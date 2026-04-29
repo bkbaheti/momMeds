@@ -3,7 +3,7 @@
 // Sheet ID: 1ffgPdEHv-urkjMj1Rq9P66GoLFM_PBhTcOdvCTqj9eI
 // ============================================================
 
-const BACKEND_VERSION = '1.1.0'; // Bump this on every Code.gs update
+const BACKEND_VERSION = '1.2.0'; // Bump this on every Code.gs update
 const SHEET_ID = '1ffgPdEHv-urkjMj1Rq9P66GoLFM_PBhTcOdvCTqj9eI';
 const PROPS = PropertiesService.getScriptProperties();
 
@@ -16,7 +16,8 @@ const DRUGS = {
 };
 
 // Pred Forte taper: week number (1-based) → doses/day
-const PRED_TAPER = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
+// Reset to 5-week taper per LVPEI prescription dated 23-04-2026.
+const PRED_TAPER = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
 
 // ---- Helpers ----
 
@@ -102,7 +103,7 @@ function readSettings() {
       // Google Sheets auto-converts time strings to Date objects — convert back
       if (val instanceof Date) {
         const key = data[i][0];
-        if (key === 'startDate') {
+        if (key === 'startDate' || key === 'predForteStartDate') {
           // Format as YYYY-MM-DD
           val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
         } else if (key === 'wakeTime' || key === 'bedTime') {
@@ -117,6 +118,7 @@ function readSettings() {
     wakeTime: raw.wakeTime || '07:00',
     bedTime: raw.bedTime || '22:00',
     startDate: raw.startDate || '2026-04-19',
+    predForteStartDate: raw.predForteStartDate || '2026-04-23',
     minGapMinutes: parseInt(raw.minGapMinutes) || 10,
     graceMinutes: parseInt(raw.graceMinutes) || 20,
     missMinutes: parseInt(raw.missMinutes) || 90,
@@ -141,9 +143,11 @@ function writeSetting(key, value) {
 function activeDrugs(date, settings) {
   const startDate = new Date(settings.startDate);
   const day = daysBetween(startDate, date);
+  const predStart = new Date(settings.predForteStartDate || settings.startDate);
+  const predDay = daysBetween(predStart, date);
   const drugs = [];
 
-  // Ocupol: 4x/day for 7 days (days 0-6)
+  // Ocupol: 4x/day for 7 days (days 0-6) post treatment start
   if (day >= 0 && day < 7) {
     drugs.push({ id: 'ocupol', freq: 4 });
   }
@@ -153,10 +157,13 @@ function activeDrugs(date, settings) {
     drugs.push({ id: 'amplinak', freq: 3 });
   }
 
-  // Pred Forte: tapering over 6 weeks
-  if (day >= 0) {
-    const week = Math.floor(day / 7) + 1;
-    if (week <= 6) {
+  // Pred Forte: tapering schedule anchored to predForteStartDate so a
+  // mid-course re-taper (new prescription) can restart cleanly without
+  // changing the overall treatment startDate.
+  if (predDay >= 0) {
+    const week = Math.floor(predDay / 7) + 1;
+    const taperWeeks = Object.keys(PRED_TAPER).length;
+    if (week <= taperWeeks) {
       drugs.push({ id: 'pred_forte', freq: PRED_TAPER[week] });
     }
   }
@@ -702,6 +709,7 @@ function initHeaders() {
     settings.appendRow(['wakeTime', '07:00']);
     settings.appendRow(['bedTime', '22:00']);
     settings.appendRow(['startDate', '2026-04-19']);
+    settings.appendRow(['predForteStartDate', '2026-04-23']);
     settings.appendRow(['minGapMinutes', '10']);
     settings.appendRow(['graceMinutes', '20']);
     settings.appendRow(['missMinutes', '90']);
